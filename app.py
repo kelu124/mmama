@@ -79,7 +79,7 @@ def order_document_sections_by_query_similarity(query: str, contexts: dict[(str,
     return document_similarities
 
 
-def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) -> str:
+def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame, style: str) -> str:
     """
     Fetch relevant 
     """
@@ -104,9 +104,14 @@ def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) 
     # Useful diagnostic information
     print(f"Selected {len(chosen_sections)} document sections:")
     print("\n".join(chosen_sections_indexes))
-    
-    header = """Answer the question as truthfully as possible using the provided context, in the style of a management consultant, and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
-    prompt = header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
+    if style == "simple":
+        STYLE = " in the elaborate style of a management consultant, "
+    elif style == "advanced":
+        STYLE = " in the style of 10-year old, "
+    else:
+        STYLE = ""
+    header = "Answer the question as truthfully as possible using the provided context," +STYLE+""" and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
+    prompt = header.replace("  "," ") + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
     return prompt, most_relevant_document_sections, chosen_sections, chosen_sections_indexes
 
 
@@ -115,6 +120,7 @@ def answer_query_with_context(
     query: str,
     df: pd.DataFrame,
     document_embeddings: dict[(str, str), np.array],
+    style: str,
     show_prompt: bool = False
 ) -> str:
     
@@ -122,7 +128,8 @@ def answer_query_with_context(
     prompt, most_relevant_document_sections, chosen_sections, chosen_sections_indexes = construct_prompt(
         query,
         document_embeddings,
-        df
+        df,
+        style
     )
     
     if show_prompt:
@@ -141,20 +148,20 @@ def answer_query_with_context(
 
 # We will get the user's input by calling the get_text function
 def get_text():
-    input_text = st.text_input("You: ","What are lenders technical assitance services?", key="input")
+    input_text = st.text_input("You: ","What are lenders technical assistance due diligences?", key="input")
     return input_text
 
 
 @st.cache(hash_funcs={pd.core.frame.DataFrame: id},\
     allow_output_mutation=True,suppress_st_warning=True)
-def loadLargeFiles():
+def loadLargeFilesOnce():
     document_embeddings = load_embeddings("embedding.csv.gzip")
     df = pd.read_parquet("all_pages.parquet.gzip")
     return document_embeddings, df
 
 
-def generate_response(query,df, document_embeddings):
-    answer, most_relevant_document_sections, chosen_sections, chosen_sections_indexes = answer_query_with_context(query, df, document_embeddings)
+def generate_response(query,df, document_embeddings, style=""):
+    answer, most_relevant_document_sections, chosen_sections, chosen_sections_indexes = answer_query_with_context(query, df, document_embeddings, style)
 
     if len(chosen_sections_indexes):
         st.sidebar.write("### Source(s)\n")
@@ -166,7 +173,7 @@ def generate_response(query,df, document_embeddings):
     return answer
 
 
-document_embeddings, df = loadLargeFiles()
+document_embeddings, df = loadLargeFilesOnce()
 
 
 st.title("MM AMA : MM Website + openAI")
@@ -176,17 +183,35 @@ if 'generated' not in st.session_state:
 if 'past' not in st.session_state:
     st.session_state['past'] = []
 
+    
+st.sidebar.write("### __Parameters__")   
+st.sidebar.write("#### Experimental")   
+
+if "visibility" not in st.session_state:
+    st.session_state.temperature = 0.0
+    st.session_state.style = False
+
+temp = st.sidebar.slider(
+    'Temperature',
+    0.0, 1.0,value= st.session_state.temperature ,step=0.01)
+st.session_state.temperature = temp
+COMPLETIONS_API_PARAMS["temperature"] = temp
 
 
-#query = "Who is Cathy Travers?"
-#answer = answer_query_with_context(query, df, document_embeddings)
-#st.write(f"\nQ: {query}\nA: {answer}")
+style = st.sidebar.selectbox(
+        "What style ?",
+        ("normal","simple", "advanced"), 
+    )
+st.session_state.style = style
+
+st.sidebar.write("* _Temp.:_",COMPLETIONS_API_PARAMS["temperature"])
+st.sidebar.write("* _Style:_",style)
 
 
 user_input = get_text()
 
 if user_input:
-    output = generate_response(user_input,df, document_embeddings)
+    output = generate_response(user_input,df, document_embeddings,st.session_state.style)
     # store the output 
     st.session_state.past.append(user_input)
     st.session_state.generated.append(output)
