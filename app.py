@@ -1,13 +1,9 @@
 import openai 
 import streamlit as st
 import numpy as np
-import openai
 import pandas as pd 
 import tiktoken
 from streamlit_chat import message
-
-openai.api_key_path = "APIKEY.txt"
-
 
 
 COMPLETIONS_MODEL = "text-davinci-003"
@@ -151,9 +147,9 @@ def get_text():
 
 @st.cache(hash_funcs={pd.core.frame.DataFrame: id},\
     allow_output_mutation=True,suppress_st_warning=True)
-def loadOnce():
-    document_embeddings = load_embeddings("data/embedding.csv.gzip")
-    df = pd.read_parquet("data/all_pages.parquet.gzip")
+def loadLargeFiles():
+    document_embeddings = load_embeddings("embedding.csv.gzip")
+    df = pd.read_parquet("all_pages.parquet.gzip")
     return document_embeddings, df
 
 
@@ -161,7 +157,7 @@ def generate_response(query,df, document_embeddings):
     answer, most_relevant_document_sections, chosen_sections, chosen_sections_indexes = answer_query_with_context(query, df, document_embeddings)
 
     if len(chosen_sections_indexes):
-        st.sidebar.write("### Sources\n")
+        st.sidebar.write("### Source(s)\n")
         for ix, row in df[df.IDX.isin(chosen_sections_indexes)].iterrows():
             st.sidebar.write("* ["+row.title+"]("+row.url+")")
     else:
@@ -170,7 +166,7 @@ def generate_response(query,df, document_embeddings):
     return answer
 
 
-document_embeddings, df = loadOnce()
+document_embeddings, df = loadLargeFiles()
 
 
 st.title("MM AMA : MM Website + openAI")
